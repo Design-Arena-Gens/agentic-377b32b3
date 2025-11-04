@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Labirinto 3D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+        }
+        #victory {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            background: rgba(0, 200, 0, 0.9);
+            padding: 40px;
+            border-radius: 15px;
+            font-size: 32px;
+            text-align: center;
+            display: none;
+            z-index: 200;
+        }
+        #victory button {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            cursor: pointer;
+            background: #fff;
+            border: none;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <strong>🎮 Labirinto 3D</strong><br>
+        WASD ou Setas: Mover<br>
+        Mouse: Olhar ao redor<br>
+        <span id="timer">Tempo: 0s</span><br>
+        <strong style="color: #ffff00;">🎯 Encontre a esfera dourada!</strong>
+    </div>
+    <div id="victory">
+        🏆 Parabéns! Você venceu! 🏆<br>
+        <span id="finalTime"></span>
+        <br><button onclick="location.reload()">Jogar Novamente</button>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Configuração da cena
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 0, 50);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Iluminação
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 20, 10);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        scene.add(directionalLight);
+
+        // Labirinto (1 = parede, 0 = caminho, 2 = objetivo)
+        const maze = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+            [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+            [1,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
+            [1,0,1,1,1,1,1,0,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,0,1,1,1,0,1,1,1,0,1],
+            [1,0,1,0,0,0,1,0,0,0,1,0,0,0,1],
+            [1,0,1,0,1,1,1,0,1,0,1,0,1,1,1],
+            [1,0,0,0,1,0,0,0,1,0,0,0,0,0,1],
+            [1,1,1,0,1,0,1,1,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,2,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        // Criar paredes
+        const wallMaterial = new THREE.MeshStandardMaterial({
+            color: 0x8B4513,
+            roughness: 0.8,
+            metalness: 0.2
+        });
+
+        const wallGeometry = new THREE.BoxGeometry(2, 3, 2);
+
+        for (let z = 0; z < maze.length; z++) {
+            for (let x = 0; x < maze[z].length; x++) {
+                if (maze[z][x] === 1) {
+                    const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+                    wall.position.set(x * 2, 1.5, z * 2);
+                    wall.castShadow = true;
+                    wall.receiveShadow = true;
+                    scene.add(wall);
+                }
+            }
+        }
+
+        // Chão
+        const floorGeometry = new THREE.PlaneGeometry(maze[0].length * 2, maze.length * 2);
+        const floorMaterial = new THREE.MeshStandardMaterial({
+            color: 0x90EE90,
+            roughness: 0.8
+        });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Objetivo (esfera dourada)
+        const goalGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+        const goalMaterial = new THREE.MeshStandardMaterial({
+            color: 0xFFD700,
+            emissive: 0xFFD700,
+            emissiveIntensity: 0.5,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const goal = new THREE.Mesh(goalGeometry, goalMaterial);
+        goal.position.set(13 * 2, 1, 13 * 2);
+        goal.castShadow = true;
+        scene.add(goal);
+
+        // Luz do objetivo
+        const goalLight = new THREE.PointLight(0xFFD700, 2, 8);
+        goalLight.position.copy(goal.position);
+        scene.add(goalLight);
+
+        // Jogador
+        camera.position.set(2, 1.6, 2);
+        let velocity = new THREE.Vector3();
+        let direction = new THREE.Vector3();
+        const moveSpeed = 0.1;
+
+        // Controles
+        const keys = {};
+        document.addEventListener('keydown', (e) => keys[e.code] = true);
+        document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        let mouseX = 0, mouseY = 0;
+        let rotationX = 0, rotationY = 0;
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.movementX || 0;
+            mouseY = e.movementY || 0;
+
+            rotationY -= mouseX * 0.002;
+            rotationX -= mouseY * 0.002;
+            rotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationX));
+        });
+
+        // Bloquear ponteiro ao clicar
+        renderer.domElement.addEventListener('click', () => {
+            renderer.domElement.requestPointerLock();
+        });
+
+        // Timer
+        let startTime = Date.now();
+        let gameWon = false;
+
+        function updateTimer() {
+            if (!gameWon) {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                document.getElementById('timer').textContent = `Tempo: ${elapsed}s`;
+            }
+        }
+
+        setInterval(updateTimer, 100);
+
+        // Verificar colisão com paredes
+        function checkCollision(x, z) {
+            const gridX = Math.round(x / 2);
+            const gridZ = Math.round(z / 2);
+
+            if (gridZ >= 0 && gridZ < maze.length && gridX >= 0 && gridX < maze[0].length) {
+                return maze[gridZ][gridX] === 1;
+            }
+            return true;
+        }
+
+        // Verificar vitória
+        function checkWin() {
+            const gridX = Math.round(camera.position.x / 2);
+            const gridZ = Math.round(camera.position.z / 2);
+
+            if (gridZ >= 0 && gridZ < maze.length && gridX >= 0 && gridX < maze[0].length) {
+                if (maze[gridZ][gridX] === 2) {
+                    gameWon = true;
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    document.getElementById('finalTime').textContent = `Tempo: ${elapsed}s`;
+                    document.getElementById('victory').style.display = 'block';
+                }
+            }
+        }
+
+        // Animação do objetivo
+        function animateGoal() {
+            goal.rotation.y += 0.02;
+            goal.position.y = 1 + Math.sin(Date.now() * 0.003) * 0.3;
+            goalLight.position.copy(goal.position);
+        }
+
+        // Loop de animação
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!gameWon) {
+                // Movimento
+                direction.set(0, 0, 0);
+
+                if (keys['KeyW'] || keys['ArrowUp']) direction.z -= 1;
+                if (keys['KeyS'] || keys['ArrowDown']) direction.z += 1;
+                if (keys['KeyA'] || keys['ArrowLeft']) direction.x -= 1;
+                if (keys['KeyD'] || keys['ArrowRight']) direction.x += 1;
+
+                direction.normalize();
+
+                // Aplicar rotação à direção
+                const moveX = direction.x * Math.cos(rotationY) - direction.z * Math.sin(rotationY);
+                const moveZ = direction.x * Math.sin(rotationY) + direction.z * Math.cos(rotationY);
+
+                const newX = camera.position.x + moveX * moveSpeed;
+                const newZ = camera.position.z + moveZ * moveSpeed;
+
+                // Verificar colisão antes de mover
+                if (!checkCollision(newX, camera.position.z)) {
+                    camera.position.x = newX;
+                }
+                if (!checkCollision(camera.position.x, newZ)) {
+                    camera.position.z = newZ;
+                }
+
+                // Rotação da câmera
+                camera.rotation.order = 'YXZ';
+                camera.rotation.y = rotationY;
+                camera.rotation.x = rotationX;
+
+                checkWin();
+            }
+
+            animateGoal();
+            renderer.render(scene, camera);
+        }
+
+        // Redimensionar
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
